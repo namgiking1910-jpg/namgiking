@@ -1,0 +1,16 @@
+function updateVaccine(){
+  // 변이 항원 찾기
+  const mut = antigens.find(a=>a.dataset.mut==='1' && !a.classList.contains('neutralized'));
+  if(!mut){ 
+    showToast('필요한 변이가 없습니다.'); 
+    return; 
+  }
+
+  const shape = mut.dataset.shape;
+
+  // 항체 하나 추가 (트레이에 바로 붙이기)
+  const newAb = makePiece(shape);
+  tray.appendChild(newAb);
+
+  showToast(`업데이트 백신 생성! (${shape} 항체 추가됨)`);
+}
