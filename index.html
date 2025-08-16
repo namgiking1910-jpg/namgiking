@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>항원–항체 매칭 게임 (부스 데모)</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0e1628;
+      --edge:#223049;
+      --ink:#e5e7eb;
+      --muted:#9aa3b2;
+      --ab:#38bdf8; /* antibody */
+      --ag:#ef4444; /* antigen */
+      --mut:#f59e0b; /* mutation */
+      --ok:#22c55e;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color: transparent}
+    html,body{height:100%}
+    body{
+      margin:0; background: radial-gradient(1000px 600px at 10% 10%, #0f1a30 0%, var(--bg) 70%);
+      color:var(--ink);
+      font: 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+      letter-spacing:.2px;
+      touch-action: none;
+    }
+    .wrap{max-width:1100px; margin:12px auto; padding:12px;}
+    .top{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+    .title{font-weight:800; font-size:clamp(18px,4.5vw,26px)}
+    .sub{color:var(--muted); font-size:13px}
+    .btn{
+      background:#0d1526; color:var(--ink); border:1px solid var(--edge);
+      border-radius:12px; padding:10px 12px; font-weight:700; cursor:pointer;
+      transition: transform .05s ease, background .2s ease;
+      user-select:none;
+    }
+    .btn:active{transform:scale(0.98)}
+    .btn.primary{background:linear-gradient(135deg,#16a34a,#22c55e); color:white; border-color:#1c7f3e}
+    .btn.warn{background:linear-gradient(135deg,#ea580c,#f59e0b); color:#1b1b1b; border:none}
+    .btn.ghost{background:transparent}
+    .grid{display:grid; grid-template-columns: 300px 1fr; gap:12px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+    .panel{
+      background:var(--panel); border:1px solid var(--edge); border-radius:16px; padding:12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      backdrop-filter: blur(6px);
+    }
+    .panel h3{margin:.2rem 0 .4rem 0; font-size:15px; color:#cbd5e1; letter-spacing:.3px}
+    .legend{display:flex; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--muted)}
+    .chip{display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--edge); padding:4px 8px; border-radius:999px}
+    .chip i{display:inline-block; width:12px; height:12px; border-radius:3px}
+    .chip .ab{background:var(--ab)} .chip .ag{background:var(--ag)} .chip .mut{background:var(--mut)}
+    .stat{display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; font-size:13px; color:#cbd5e1}
+    .tag{padding:6px 10px; border:1px solid var(--edge); border-radius:999px; background:#0b1220aa}
+    .tray{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px}
+    .piece{
+      user-select:none; position:relative; display:flex; align-items:center; justify-content:center;
+      width:86px; height:86px; border-radius:12px; background:#0a1324; border:1px solid var(--edge);
+      touch-action:none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+    .piece .label{position:absolute; bottom:6px; font-size:11px; color:#94a3b8}
+    svg{width:64px;height:64px}
+    .play{position:relative; height:min(68vh,560px); min-height:420px; border-radius:16px; overflow:hidden;
+      background: repeating-linear-gradient(45deg, rgba(255,255,255,.02), rgba(255,255,255,.02) 10px, rgba(255,255,255,.01) 10px, rgba(255,255,255,.01) 20px);
+      border:1px solid var(--edge);
+    }
+    .agdot{
+      position:absolute; width:100px; height:100px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+      background:#0c1426; border:1px solid var(--edge);
+      box-shadow: 0 10px 20px rgba(0,0,0,.35);
+      transition: transform .18s ease;
+    }
+    .agdot.mut{ outline:2px dashed var(--mut) }
+    .neutralized{ filter: saturate(.25) brightness(.8); opacity:.65 }
+    .floating{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#0b1220f0; border:1px solid var(--edge);
+      border-radius:14px; padding:18px; z-index:50; box-shadow:0 20px 50px rgba(0,0,0,.6)}
+    .hidden{display:none !important}
+    .toast{position:absolute; left:50%; bottom:12px; transform:translateX(-50%); background:#0b1220ee; border:1px solid var(--edge); border-radius:999px; padding:8px 14px; font-size:13px; color:#cbd5e1}
+    .hint{font-size:12px; color:#9aa3b2; margin-top:6px}
+    .link{color:#93c5fd; text-decoration:underline; cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">항원–항체 매칭 게임 <span class="sub">/ 백신 원리 체험</span></div>
+        <div class="sub">항체를 드래그해 항원과 정확히 결합하세요. 변이 항원은 기존 항체가 붙지 않습니다.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" id="btnLearn">학습 모드</button>
+        <button class="btn" id="btnChallenge">챌린지 모드</button>
+        <button class="btn ghost" id="btnReset">초기화</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>항체 트레이</h3>
+        <div class="tray" id="tray"></div>
+        <div class="legend" style="margin-top:6px">
+          <span class="chip"><i class="ab"></i> 항체</span>
+          <span class="chip"><i class="ag"></i> 항원</span>
+          <span class="chip"><i class="mut"></i> 변이</span>
+        </div>
+        <div class="stat">
+          <span class="tag">점수: <b id="score">0</b></span>
+          <span class="tag">남은 시간: <b id="time">—</b></span>
+          <span class="tag">모드: <b id="mode">대기</b></span>
+        </div>
+        <div class="hint">팁: 항체는 모든 항원에 붙지 않습니다(특이적 결합). 변이가 나타나면 “업데이트 백신”을 생성하세요.</div>
+        <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap">
+          <button class="btn warn" id="btnUpdate">업데이트 백신 생성</button>
+          <button class="btn" id="btnSpawn">항원 추가</button>
+          <a class="btn ghost" id="btnInfo">원리 설명</a>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="play" id="field"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal" class="floating hidden">
+    <div style="font-weight:800; margin-bottom:6px">백신 원리 요약</div>
+    <div style="font-size:14px; color:#cbd5e1; max-width:560px">
+      mRNA 백신은 바이러스를 직접 넣지 않고, <b>항원 단백질 설계도(mRNA)</b>를 세포질에 전달합니다.
+      리보솜이 이 설계도를 번역해 항원 단백질을 만들고, 면역계는 이를 학습하여 <b>특이적 항체</b>와 <b>기억세포</b>를 준비합니다.
+      변이가 생기면 결합이 약해질 수 있어 <b>업데이트 백신</b>(새 항체)이 필요합니다.
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; justify-content:flex-end">
+      <button class="btn" id="btnClose">닫기</button>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    const field = document.getElementById('field');
+    const tray = document.getElementById('tray');
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const modeEl = document.getElementById('mode');
+    const toast = document.getElementById('toast');
+    const modal = document.getElementById('modal');
+
+    const SHAPES = [
+      {id:'tri', name:'삼각'},
+      {id:'sq', name:'사각'},
+      {id:'cir', name:'원형'},
+      {id:'hex', name:'육각'},
+      {id:'moon', name:'초승'},
+      {id:'zig', name:'지그'}
+    ];
+
+    let antibodies = []; // pieces in tray
+    let antigens = [];   // dots in field
+    let score = 0;
+    let timer = null;
+    let timeLeft = 0;
+    let mode = 'idle'; // 'learn' | 'challenge' | 'idle'
+    let nextAbId = 1;
+
+    function svgShape(shape, color, isAntibody){
+      const c = color;
+      if(shape === 'tri'){
+        return `<svg viewBox="0 0 100 100"><polygon points="50,10 90,90 10,90" fill="none" stroke="${c}" stroke-width="8" ${isAntibody? 'transform="scale(1, -1) translate(0, -100)"':''}/></svg>`;
+      }
+      if(shape === 'sq'){
+        return `<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" rx="10" fill="none" stroke="${c}" stroke-width="8"/></svg>`;
+      }
+      if(shape === 'cir'){
+        return `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34" fill="none" stroke="${c}" stroke-width="8"/></svg>`;
+      }
+      if(shape === 'hex'){
+        return `<svg viewBox="0 0 100 100"><polygon points="30,15 70,15 90,50 70,85 30,85 10,50" fill="none" stroke="${c}" stroke-width="8"/></svg>`;
+      }
+      if(shape === 'moon'){
+        return `<svg viewBox="0 0 100 100">
+        <path d="M60 15a35 35 0 1 0 0 70a28 28 0 1 1 0-70z" fill="none" stroke="${c}" stroke-width="8"/></svg>`;
+      }
+      if(shape === 'zig'){
+        return `<svg viewBox="0 0 100 100"><polyline points="10,70 35,30 60,70 85,30" fill="none" stroke="${c}" stroke-width="8"/></svg>`;
+      }
+      return '';
+    }
+
+    function makePiece(shape){
+      const el = document.createElement('div');
+      el.className = 'piece';
+      el.dataset.shape = shape;
+      el.innerHTML = svgShape(shape, 'var(--ab)', true) + `<div class="label">AB - ${shape}</div>`;
+      tray.appendChild(el);
+      enableDrag(el, true);
+      antibodies.push(el);
+      return el;
+    }
+
+    function spawnAntigen(shape, mutated=false){
+      const el = document.createElement('div');
+      el.className = 'agdot' + (mutated ? ' mut' : '');
+      el.dataset.shape = shape;
+      el.dataset.mut = mutated ? '1' : '0';
+      el.innerHTML = svgShape(shape, mutated ? 'var(--mut)' : 'var(--ag)', false);
+      const rect = field.getBoundingClientRect();
+      const x = Math.random() * (rect.width - 120) + 10;
+      const y = Math.random() * (rect.height - 120) + 10;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      field.appendChild(el);
+      antigens.push(el);
+      return el;
+    }
+
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(()=> toast.classList.add('hidden'), 1200);
+    }
+
+    function startLearn(){
+      reset(false);
+      mode = 'learn'; modeEl.textContent = '학습';
+      // 준비: 항체 3개, 항원 3개 + 변이 1개
+      const shapes = shuffle(SHAPES.slice()).slice(0,3).map(s=>s.id);
+      shapes.forEach(s=> makePiece(s));
+      shapes.forEach(s=> spawnAntigen(s, false));
+      spawnAntigen(shapes[0], true); // 변이 하나
+      showToast('학습 모드 시작: 맞는 항체로 결합해보세요.');
+    }
+
+    function startChallenge(){
+      reset(false);
+      mode = 'challenge'; modeEl.textContent = '챌린지';
+      timeLeft = 45; timeEl.textContent = timeLeft + 's';
+      timer = setInterval(()=>{
+        timeLeft--; timeEl.textContent = timeLeft + 's';
+        if(timeLeft <= 0){ clearInterval(timer); timer=null; endChallenge(); }
+      }, 1000);
+      // 초기 스폰
+      const shapes = shuffle(SHAPES.slice()).slice(0,4).map(s=>s.id);
+      shapes.forEach(s=> makePiece(s));
+      for(let i=0;i<4;i++){ spawnAntigen(shapes[i], Math.random()<0.3); }
+      // 주기적 항원 추가
+      let tick = 0;
+      const spawner = setInterval(()=>{
+        if(mode!=='challenge'){ clearInterval(spawner); return; }
+        tick++;
+        const pool = SHAPES[Math.floor(Math.random()*SHAPES.length)].id;
+        spawnAntigen(pool, Math.random()<0.35);
+        if(tick%3===0){ makePiece(pool); }
+      }, 2500);
+    }
+
+    function endChallenge(){
+      mode = 'idle'; modeEl.textContent = '대기';
+      showToast('종료! 점수: ' + score);
+    }
+
+    function reset(hard=true){
+      antigens.forEach(el=>el.remove()); antigens = [];
+      antibodies.forEach(el=>el.remove()); antibodies = [];
+      score = 0; scoreEl.textContent = '0';
+      if(timer){ clearInterval(timer); timer=null; }
+      timeLeft = 0; timeEl.textContent = '—';
+      mode = 'idle'; modeEl.textContent = '대기';
+      if(hard) showToast('초기화 완료');
+    }
+
+    function updateVaccine(){
+      // 업데이트 백신: 현재 필드에 있는 변이 항원 중 하나 선택하여 해당 형상 항체 1개 생성
+      const mut = antigens.find(a=>a.dataset.mut==='1' && !a.classList.contains('neutralized'));
+      if(!mut){ showToast('필요한 변이가 없습니다.'); return; }
+      const shape = mut.dataset.shape;
+      makePiece(shape);
+      showToast('업데이트 백신(새 항체) 생성!');
+    }
+
+    function enableDrag(el, isPiece){
+      let offsetX=0, offsetY=0;
+      let dragging = false;
+      function pointerDown(e){
+        dragging = true;
+        const rect = el.getBoundingClientRect();
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        offsetX = x - rect.left; offsetY = y - rect.top;
+        el.style.position = 'absolute';
+        el.style.zIndex = 20;
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        document.body.appendChild(el);
+        e.preventDefault();
+      }
+      function pointerMove(e){
+        if(!dragging) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        el.style.left = (x - offsetX) + 'px';
+        el.style.top = (y - offsetY) + 'px';
+        e.preventDefault();
+      }
+      function pointerUp(e){
+        if(!dragging) return;
+        dragging = false;
+        // 충돌 체크: 항원과 모양 동일 + 변이 아님 => 중화 성공
+        const px = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+        const py = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY);
+        const target = antigens.find(a=> {
+          const r = a.getBoundingClientRect();
+          return px > r.left && px < r.right && py > r.top && py < r.bottom;
+        });
+        if(target){
+          const match = target.dataset.shape === el.dataset.shape && target.dataset.mut!=='1';
+          if(match){
+            target.classList.add('neutralized');
+            setTimeout(()=>{ target.remove(); antigens = antigens.filter(x=>x!==target); }, 250);
+            score += 10; scoreEl.textContent = String(score);
+            showToast('결합 성공! (특이적 결합)');
+            // 사용된 항체는 소모
+            el.remove();
+            antibodies = antibodies.filter(x=>x!==el);
+          }else{
+            showToast('결합 실패: 변이 or 비특이적');
+          }
+        }
+        // 원위치 정리
+        if(document.body.contains(el)){
+          // 반환 트레이에 붙이기 (대충 문서 흐름 끝으로)
+          tray.appendChild(el);
+          el.style.position=''; el.style.left=''; el.style.top=''; el.style.zIndex='';
+        }
+        e.preventDefault();
+      }
+      el.addEventListener('mousedown', pointerDown);
+      el.addEventListener('touchstart', pointerDown, {passive:false});
+      window.addEventListener('mousemove', pointerMove, {passive:false});
+      window.addEventListener('touchmove', pointerMove, {passive:false});
+      window.addEventListener('mouseup', pointerUp);
+      window.addEventListener('touchend', pointerUp);
+    }
+
+    function shuffle(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // UI hooks
+    document.getElementById('btnLearn').addEventListener('click', startLearn);
+    document.getElementById('btnChallenge').addEventListener('click', startChallenge);
+    document.getElementById('btnReset').addEventListener('click', ()=>reset(true));
+    document.getElementById('btnUpdate').addEventListener('click', updateVaccine);
+    document.getElementById('btnSpawn').addEventListener('click', ()=>{
+      const shape = SHAPES[Math.floor(Math.random()*SHAPES.length)].id;
+      spawnAntigen(shape, Math.random()<0.4);
+    });
+    document.getElementById('btnInfo').addEventListener('click', ()=> modal.classList.remove('hidden'));
+    document.getElementById('btnClose').addEventListener('click', ()=> modal.classList.add('hidden'));
+
+    // 초기 상태
+    // 자동으로 학습 모드 안내만
+  </script>
+</body>
+</html>
